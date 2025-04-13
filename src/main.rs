@@ -34,7 +34,7 @@ fn read_request(stream: &TcpStream) -> Vec<String> {
     http_request
 }
 
-fn process_request(http_request: &Vec<String>) -> &str {
+fn process_request(http_request: &Vec<String>) -> String {
     let first_line = http_request.get(0).unwrap();
     if first_line.contains("GET") {
         let request_parts: Vec<&str> = first_line.split_whitespace().collect();
@@ -42,12 +42,19 @@ fn process_request(http_request: &Vec<String>) -> &str {
         if request_parts.len() >= 3 {
             let request_target = request_parts[1];
             match request_target {
-                "/index.html" | "/" => return "HTTP/1.1 200 OK\r\n\r\n",
-                _ => return "HTTP/1.1 404 Not Found\r\n\r\n",
+                "/index.html" | "/" => return "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+                path if path.starts_with("/echo/") => {
+                    let content = path.strip_prefix("/echo/").unwrap_or("");
+                    return format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+                        content.len(), content
+                    );
+                }
+                _ => return "HTTP/1.1 404 Not Found\r\n\r\n".to_string(),
             }
         }
     }
-    "Malformed Request Line in HTTP_Request!"
+    "Malformed Request Line in HTTP_Request!".to_string()
 }
 
 fn write_request(mut stream: TcpStream, buffer: &str) -> std::io::Result<()> {
@@ -62,7 +69,7 @@ fn handle_connection(stream: TcpStream) -> std::io::Result<()> {
     println!("Request received:\n{http_request:#?}");
 
     let to_write = process_request(&http_request);
-    write_request(stream, to_write)?;
+    write_request(stream, &to_write)?;
 
     Ok(())
 }
