@@ -1,7 +1,8 @@
 #[allow(unused_imports)]
 use std::io::prelude::*;
 use std::{
-    io::BufReader,
+    fs::File,
+    io::{BufReader, Read},
     net::{TcpListener, TcpStream},
     thread,
 };
@@ -54,6 +55,14 @@ fn read_request(stream: &TcpStream) -> Vec<String> {
     http_request
 }
 
+fn fetch_files(filename: &str) -> std::io::Result<String> {
+    let mut file = File::open(filename)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    Ok(contents)
+}
+
 fn process_request(http_request: &Vec<String>) -> String {
     let first_line = http_request.get(0).unwrap();
     if first_line.contains("GET") {
@@ -62,33 +71,70 @@ fn process_request(http_request: &Vec<String>) -> String {
         if request_parts.len() >= 3 {
             let request_target = request_parts[1];
             match request_target {
-                "/index.html" | "/" => return structure_response(StatusCode::Ok, ""),
-                path if path.starts_with("/echo/") => {
-                    let content = path.strip_prefix("/echo/").unwrap_or("");
-                    return structure_response(StatusCode::Ok, content);
+                "/index.html" | "/" => {
+                    return structure_response(
+                        StatusCode::Ok,
+                        "text/plain",
+                        "Welcome to Neel's HTTP Server Project, built with Rust!",
+                    )
                 }
+
+                path if path.starts_with("/echo/") => {
+                    let content = path.strip_prefix("/echo/").unwrap();
+                    return structure_response(StatusCode::Ok, "text/plain", content);
+                }
+
                 "/user-agent" => {
                     if let Some(line) = http_request
                         .iter()
                         .find(|line| line.contains("User-Agent: "))
                     {
                         let line = line.strip_prefix("User-Agent: ").unwrap_or("");
-                        return structure_response(StatusCode::Ok, line);
+                        return structure_response(StatusCode::Ok, "text/plain", line);
                     }
                 }
-                _ => return structure_response(StatusCode::NotFound, "Page NOT found!"),
+
+                path if path.starts_with("/files/") => {
+                    let filename = path.strip_prefix("/files/").unwrap();
+                    let content = fetch_files(filename);
+                    match content {
+                        Ok(content) => {
+                            return structure_response(
+                                StatusCode::Ok,
+                                "application/octet-stream",
+                                &content,
+                            )
+                        }
+                        Err(_) => {
+                            return structure_response(
+                                StatusCode::NotFound,
+                                "text/plain",
+                                "File NOT found!",
+                            )
+                        }
+                    }
+                }
+
+                _ => {
+                    return structure_response(
+                        StatusCode::NotFound,
+                        "text/plain",
+                        "Page NOT found!",
+                    )
+                }
             }
         }
     }
     structure_response(
         StatusCode::NotFound,
+        "text/plain",
         "Malformed Request Line in HTTP_Request!",
     )
 }
 
-fn structure_response(status: StatusCode, response: &str) -> String {
+fn structure_response(status: StatusCode, content_type: &str, response: &str) -> String {
     format!(
-        "{}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+        "{}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n{}",
         status.text_value(),
         response.len(),
         response
