@@ -23,6 +23,21 @@ fn main() {
     }
 }
 
+#[derive(Debug)]
+enum StatusCode {
+    Ok,
+    NotFound,
+}
+
+impl StatusCode {
+    fn text_value(&self) -> &'static str {
+        match self {
+            StatusCode::Ok => "HTTP/1.1 200 OK",
+            StatusCode::NotFound => "HTTP/1.1 404 Not Found",
+        }
+    }
+}
+
 fn read_request(stream: &TcpStream) -> Vec<String> {
     let buffer = BufReader::new(stream);
     let http_request: Vec<_> = buffer
@@ -42,34 +57,40 @@ fn process_request(http_request: &Vec<String>) -> String {
         if request_parts.len() >= 3 {
             let request_target = request_parts[1];
             match request_target {
-                "/index.html" | "/" => return "HTTP/1.1 200 OK\r\n\r\n".to_string(),
+                "/index.html" | "/" => return structure_response(StatusCode::Ok, ""),
                 path if path.starts_with("/echo/") => {
                     let content = path.strip_prefix("/echo/").unwrap_or("");
-                    return format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-                        content.len(), content
-                    );
+                    return structure_response(StatusCode::Ok, content);
                 }
                 "/user-agent" => {
-                    match http_request
+                    if let Some(line) = http_request
                         .iter()
                         .find(|line| line.contains("User-Agent: "))
                     {
-                        Some(line) => {
-                            let line = line.strip_prefix("User-Agent: ").unwrap_or("");
-                            return format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{line}", line.len());
-                        }
-                        None => return format!("HTTP/1.1 404 Not Found\r\n\r\n"),
+                        let line = line.strip_prefix("User-Agent: ").unwrap_or("");
+                        return structure_response(StatusCode::Ok, line);
                     }
                 }
-                _ => return "HTTP/1.1 404 Not Found\r\n\r\n".to_string(),
+                _ => return structure_response(StatusCode::NotFound, "Page NOT found!"),
             }
         }
     }
-    "Malformed Request Line in HTTP_Request!".to_string()
+    structure_response(
+        StatusCode::NotFound,
+        "Malformed Request Line in HTTP_Request!",
+    )
 }
 
-fn write_request(mut stream: TcpStream, buffer: &str) -> std::io::Result<()> {
+fn structure_response(status: StatusCode, response: &str) -> String {
+    format!(
+        "{}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+        status.text_value(),
+        response.len(),
+        response
+    )
+}
+
+fn write_response(mut stream: TcpStream, buffer: &str) -> std::io::Result<()> {
     stream.write_all(buffer.as_bytes())?;
     stream.flush()?;
 
@@ -81,7 +102,8 @@ fn handle_connection(stream: TcpStream) -> std::io::Result<()> {
     println!("Request received:\n{http_request:#?}");
 
     let to_write = process_request(&http_request);
-    write_request(stream, &to_write)?;
+    println!("Ouput to write {}", to_write);
+    write_response(stream, &to_write)?;
 
     Ok(())
 }
