@@ -50,6 +50,18 @@ fn process_request(http_request: &Vec<String>) -> String {
                         content.len(), content
                     );
                 }
+                "/user-agent" => {
+                    match http_request
+                        .iter()
+                        .find(|line| line.contains("User-Agent: "))
+                    {
+                        Some(line) => {
+                            let line = line.strip_prefix("User-Agent: ").unwrap_or("");
+                            return format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{line}", line.len());
+                        }
+                        None => return format!("HTTP/1.1 404 Not Found\r\n\r\n"),
+                    }
+                }
                 _ => return "HTTP/1.1 404 Not Found\r\n\r\n".to_string(),
             }
         }
