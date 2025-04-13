@@ -35,17 +35,15 @@ fn read_request(stream: &TcpStream) -> Vec<String> {
 }
 
 fn process_request(http_request: &Vec<String>) -> &str {
-    const ACCEPTED_TARGET: &str = "/index.html";
     let first_line = http_request.get(0).unwrap();
     if first_line.contains("GET") {
         let request_parts: Vec<&str> = first_line.split_whitespace().collect();
 
         if request_parts.len() >= 3 {
             let request_target = request_parts[1];
-            if request_target == ACCEPTED_TARGET {
-                return "HTTP/1.1 200 OK\r\n\r\n";
-            } else {
-                return "HTTP/1.1 404 Not Found\r\n\r\n";
+            match request_target {
+                "/index.html" | "/" => return "HTTP/1.1 200 OK\r\n\r\n",
+                _ => return "HTTP/1.1 404 Not Found\r\n\r\n",
             }
         }
     }
