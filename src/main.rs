@@ -55,6 +55,10 @@ fn read_request(stream: &TcpStream) -> Vec<String> {
     http_request
 }
 
+fn sanitise_filename(filename: &str) -> std::io::Result<String> {
+    Ok(format!("tmp/{filename}"))
+}
+
 fn fetch_files(filename: &str) -> std::io::Result<String> {
     let mut file = File::open(filename)?;
     let mut contents = String::new();
@@ -95,8 +99,9 @@ fn process_request(http_request: &Vec<String>) -> String {
                 }
 
                 path if path.starts_with("/files/") => {
-                    let filename = path.strip_prefix("/files/").unwrap();
-                    let content = fetch_files(filename);
+                    let filename =
+                        sanitise_filename(path.strip_prefix("/files/").unwrap()).unwrap();
+                    let content = fetch_files(&filename);
                     match content {
                         Ok(content) => {
                             return structure_response(
@@ -105,12 +110,13 @@ fn process_request(http_request: &Vec<String>) -> String {
                                 &content,
                             )
                         }
-                        Err(_) => {
+                        Err(error) => {
+                            let response = format!("File: {filename} NOT found: {error}!");
                             return structure_response(
                                 StatusCode::NotFound,
                                 "text/plain",
-                                "File NOT found!",
-                            )
+                                &response,
+                            );
                         }
                     }
                 }
