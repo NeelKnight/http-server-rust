@@ -3,6 +3,7 @@ use std::io::prelude::*;
 use std::{
     io::BufReader,
     net::{TcpListener, TcpStream},
+    thread,
 };
 
 fn main() {
@@ -14,7 +15,11 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                handle_connection(stream).unwrap();
+                thread::spawn(|| {
+                    if let Err(error) = handle_connection(stream) {
+                        eprintln!("Error handling connection: {}", error);
+                    }
+                });
             }
             Err(e) => {
                 eprintln!("Failed to connect: {}", e);
