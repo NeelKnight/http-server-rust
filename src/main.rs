@@ -1,6 +1,7 @@
 #[allow(unused_imports)]
 use std::io::prelude::*;
 use std::{
+    env,
     fs::File,
     io::{BufReader, Read},
     net::{TcpListener, TcpStream},
@@ -8,6 +9,15 @@ use std::{
 };
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let directory = if let Some(index) = args.iter().position(|arg| arg == "--directory") {
+        let dirname = args.get(index + 1).expect("Directory argument missing");
+
+        dirname.strip_prefix("/").unwrap_or(dirname).to_string()
+    } else {
+        "".to_string()
+    };
+
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
     println!("Accepted new connection:");
@@ -16,8 +26,9 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                thread::spawn(|| {
-                    if let Err(error) = handle_connection(stream) {
+                let dir_ref = directory.clone();
+                thread::spawn(move || {
+                    if let Err(error) = handle_connection(stream, &dir_ref) {
                         eprintln!("Error handling connection: {}", error);
                     }
                 });
@@ -55,11 +66,12 @@ fn read_request(stream: &TcpStream) -> Vec<String> {
     http_request
 }
 
-fn sanitise_filename(filename: &str) -> std::io::Result<String> {
-    Ok(format!("tmp/{filename}"))
+fn sanitise_filename(filename: &str, directory: &str) -> std::io::Result<String> {
+    Ok(format!("{directory}{filename}"))
 }
 
 fn fetch_files(filename: &str) -> std::io::Result<String> {
+    println!("+++++++++++++{filename}");
     let mut file = File::open(filename)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
@@ -67,7 +79,7 @@ fn fetch_files(filename: &str) -> std::io::Result<String> {
     Ok(contents)
 }
 
-fn process_request(http_request: &Vec<String>) -> String {
+fn process_request(http_request: &Vec<String>, directory: &str) -> String {
     let first_line = http_request.get(0).unwrap();
     if first_line.contains("GET") {
         let request_parts: Vec<&str> = first_line.split_whitespace().collect();
@@ -100,7 +112,8 @@ fn process_request(http_request: &Vec<String>) -> String {
 
                 path if path.starts_with("/files/") => {
                     let filename =
-                        sanitise_filename(path.strip_prefix("/files/").unwrap()).unwrap();
+                        sanitise_filename(path.strip_prefix("/files/").unwrap(), directory)
+                            .unwrap();
                     let content = fetch_files(&filename);
                     match content {
                         Ok(content) => {
@@ -154,11 +167,11 @@ fn write_response(mut stream: TcpStream, buffer: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-fn handle_connection(stream: TcpStream) -> std::io::Result<()> {
+fn handle_connection(stream: TcpStream, directory: &str) -> std::io::Result<()> {
     let http_request = read_request(&stream);
     println!("Request received:\n{http_request:#?}");
 
-    let to_write = process_request(&http_request);
+    let to_write = process_request(&http_request, directory);
     println!("Ouput to write {}", to_write);
     write_response(stream, &to_write)?;
 
