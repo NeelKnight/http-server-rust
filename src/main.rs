@@ -11,9 +11,9 @@ use std::{
 fn main() {
     let args: Vec<String> = env::args().collect();
     let directory = if let Some(index) = args.iter().position(|arg| arg == "--directory") {
-        let dirname = args.get(index + 1).expect("Directory argument missing");
-
-        dirname.strip_prefix("/").unwrap_or(dirname).to_string()
+        args.get(index + 1)
+            .expect("Directory argument missing")
+            .to_string()
     } else {
         "".to_string()
     };
