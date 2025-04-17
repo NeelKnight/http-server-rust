@@ -180,7 +180,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                         .split('\n')
                         .find(|line| line.starts_with("User-Agent: "))
                     {
-                        let line = &line["User-Agent: ".len()..];
+                        let line = line.strip_prefix("User-Agent: ").unwrap();
                         return structure_response(StatusCode::Ok, "text/plain", line);
                     } else {
                         return structure_response(
