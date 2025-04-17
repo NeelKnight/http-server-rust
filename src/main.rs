@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use std::io::prelude::*;
 use std::{
     env,
@@ -41,37 +40,94 @@ fn main() {
 }
 
 #[derive(Debug)]
+struct HttpRequest {
+    header: String,
+    body: String,
+}
+
 enum StatusCode {
-    Ok,
+    BadRequest,
+    Created,
     NotFound,
+    Ok,
 }
 
 impl StatusCode {
     fn text_value(&self) -> &'static str {
         match self {
-            StatusCode::Ok => "HTTP/1.1 200 OK",
+            StatusCode::BadRequest => "HTTP/1.1 400 Bad Request",
+            StatusCode::Created => "HTTP/1.1 201 Created",
             StatusCode::NotFound => "HTTP/1.1 404 Not Found",
+            StatusCode::Ok => "HTTP/1.1 200 OK",
         }
     }
 }
 
-fn read_request(stream: &TcpStream) -> Vec<String> {
-    let buffer = BufReader::new(stream);
-    let http_request: Vec<_> = buffer
-        .lines()
-        .map(|result| result.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect();
-
-    http_request
+enum Route<'a> {
+    Index,
+    Echo(&'a str),
+    UserAgent,
+    ReadFile(&'a str),
+    PostCreateFile(&'a str),
+    NotFound,
 }
 
-fn sanitise_filename(filename: &str, directory: &str) -> std::io::Result<String> {
-    Ok(format!("{directory}{filename}"))
+fn parse_route<'a>(method: &str, path: &'a str) -> Route<'a> {
+    match (method, path) {
+        ("GET", "/") | ("GET", "/index.html") => Route::Index,
+        ("GET", "/user-agent") => Route::UserAgent,
+        ("GET", path) if path.starts_with("/echo/") => Route::Echo(&path["/echo/".len()..]),
+        ("GET", path) if path.starts_with("/files/") => Route::ReadFile(&path["/files/".len()..]),
+        ("POST", path) if path.starts_with("/files/") => {
+            Route::PostCreateFile(&path["/files/".len()..])
+        }
+        _ => Route::NotFound,
+    }
 }
 
-fn fetch_files(filename: &str) -> std::io::Result<String> {
-    println!("+++++++++++++{filename}");
+fn read_request(stream: &TcpStream) -> HttpRequest {
+    let mut buffer = BufReader::new(stream);
+    let mut header = String::new();
+    let mut line = String::new();
+
+    // Read lines until end of header
+    while buffer.read_line(&mut line).unwrap() > 0 {
+        if line == "\r\n" {
+            break;
+        }
+        header.push_str(&line);
+        line.clear();
+    }
+
+    // Check for Content-Length in header
+    let mut content_length: usize = 0;
+    for header_lines in header.lines() {
+        if let Some(value) = header_lines.to_lowercase().strip_prefix("content-length:") {
+            content_length = value.trim().parse().unwrap_or(0);
+            break;
+        }
+    }
+
+    // If Content-Length is found, read the said bytes
+    let body = if content_length > 0 {
+        let mut body = String::with_capacity(content_length);
+        buffer
+            .take(content_length as u64)
+            .read_to_string(&mut body)
+            .unwrap();
+        body
+    } else {
+        String::new()
+    };
+
+    HttpRequest { header, body }
+}
+
+fn sanitise_filename(filename: &str, directory: &str) -> String {
+    format!("{directory}{filename}")
+}
+
+fn fetch_file(filename: &str) -> std::io::Result<String> {
     let mut file = File::open(filename)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
@@ -79,42 +135,64 @@ fn fetch_files(filename: &str) -> std::io::Result<String> {
     Ok(contents)
 }
 
-fn process_request(http_request: &Vec<String>, directory: &str) -> String {
-    let first_line = http_request.get(0).unwrap();
-    if first_line.contains("GET") {
-        let request_parts: Vec<&str> = first_line.split_whitespace().collect();
+fn write_to_file(filename: &str, content: &str) -> std::io::Result<()> {
+    let mut file = File::create(filename)?;
+    file.write_all(content.as_bytes())?;
 
-        if request_parts.len() >= 3 {
-            let request_target = request_parts[1];
-            match request_target {
-                "/index.html" | "/" => {
+    Ok(())
+}
+
+fn structure_response(status: StatusCode, content_type: &str, response: &str) -> String {
+    if response == "" {
+        format!("{}\r\n\r\n", status.text_value())
+    } else {
+        format!(
+            "{}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n{}",
+            status.text_value(),
+            response.len(),
+            response
+        )
+    }
+}
+
+fn process_request(request: &HttpRequest, directory: &str) -> String {
+    if request.header.contains("GET") || request.header.contains("POST") {
+        let request_line: Vec<&str> = request.header.split_whitespace().collect();
+
+        if request_line.len() >= 3 {
+            let method = request_line[0];
+            let path = request_line[1];
+
+            match parse_route(method, path) {
+                Route::Index => {
                     return structure_response(
                         StatusCode::Ok,
                         "text/plain",
                         "Welcome to Neel's HTTP Server Project, built with Rust!",
                     )
                 }
-
-                path if path.starts_with("/echo/") => {
-                    let content = path.strip_prefix("/echo/").unwrap();
+                Route::Echo(content) => {
                     return structure_response(StatusCode::Ok, "text/plain", content);
                 }
-
-                "/user-agent" => {
-                    if let Some(line) = http_request
-                        .iter()
-                        .find(|line| line.contains("User-Agent: "))
+                Route::UserAgent => {
+                    if let Some(line) = request
+                        .header
+                        .split('\n')
+                        .find(|line| line.starts_with("User-Agent: "))
                     {
-                        let line = line.strip_prefix("User-Agent: ").unwrap_or("");
+                        let line = &line["User-Agent: ".len()..];
                         return structure_response(StatusCode::Ok, "text/plain", line);
+                    } else {
+                        return structure_response(
+                            StatusCode::BadRequest,
+                            "text/plain",
+                            "User Agent Not Found!",
+                        );
                     }
                 }
-
-                path if path.starts_with("/files/") => {
-                    let filename =
-                        sanitise_filename(path.strip_prefix("/files/").unwrap(), directory)
-                            .unwrap();
-                    let content = fetch_files(&filename);
+                Route::ReadFile(filepath) => {
+                    let filename = sanitise_filename(filepath, directory);
+                    let content = fetch_file(&filename);
                     match content {
                         Ok(content) => {
                             return structure_response(
@@ -133,8 +211,28 @@ fn process_request(http_request: &Vec<String>, directory: &str) -> String {
                         }
                     }
                 }
-
-                _ => {
+                Route::PostCreateFile(filepath) => {
+                    if request.body.is_empty() {
+                        return structure_response(
+                            StatusCode::BadRequest,
+                            "text/plain",
+                            "CreateFile API failure due to HTTP Body not present:!",
+                        );
+                    }
+                    let filename = sanitise_filename(filepath, directory);
+                    match write_to_file(&filename, &request.body) {
+                        Ok(_) => return structure_response(StatusCode::Created, "", ""),
+                        Err(error) => {
+                            let response = format!("File: {filename} creation failed: {error}!");
+                            return structure_response(
+                                StatusCode::NotFound,
+                                "text/plain",
+                                &response,
+                            );
+                        }
+                    }
+                }
+                Route::NotFound => {
                     return structure_response(
                         StatusCode::NotFound,
                         "text/plain",
@@ -148,15 +246,6 @@ fn process_request(http_request: &Vec<String>, directory: &str) -> String {
         StatusCode::NotFound,
         "text/plain",
         "Malformed Request Line in HTTP_Request!",
-    )
-}
-
-fn structure_response(status: StatusCode, content_type: &str, response: &str) -> String {
-    format!(
-        "{}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n{}",
-        status.text_value(),
-        response.len(),
-        response
     )
 }
 
