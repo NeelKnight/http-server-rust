@@ -226,15 +226,14 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                                         "gzip",
                                         &encoded_text,
                                     );
-                                } else {
-                                    return structure_response(
-                                        StatusCode::Ok,
-                                        "text/plain",
-                                        "",
-                                        "Invalid Encoding / Encoding Not supported by server!",
-                                    );
                                 }
                             }
+                            return structure_response(
+                                StatusCode::Ok,
+                                "text/plain",
+                                "",
+                                "Invalid Encoding / Encoding Not supported by server!",
+                            );
                         }
                         None => (),
                     }
