@@ -182,7 +182,7 @@ fn structure_response(
         format!("{}\r\n\r\n", status.text_value())
     } else if content_encoding != "" {
         format!(
-            "{}\r\nContent-Type: {content_type}\nContent-Encoding: {content_encoding}\r\nContent-Length: {}\r\n\r\n{}",
+            "{}\r\nContent-Type: {content_type}\r\nContent-Encoding: {content_encoding}\r\nContent-Length: {}\r\n\r\n{}",
             status.text_value(),
             response.len(),
             response
