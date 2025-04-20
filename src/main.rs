@@ -178,7 +178,7 @@ fn encode(content: &str) -> Vec<u8> {
 fn bytes_to_hexstr(byte_data: &[u8]) -> String {
     byte_data
         .iter()
-        .map(|b| format!("{:02X}", b))
+        .map(|b| format!("{:02x}", b))
         .collect::<Vec<_>>()
         .join(" ")
 }
