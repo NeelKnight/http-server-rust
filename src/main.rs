@@ -176,11 +176,7 @@ fn encode(content: &str) -> Vec<u8> {
 // }
 
 fn bytes_to_hexstr(byte_data: &[u8]) -> String {
-    byte_data
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<Vec<_>>()
-        .join(" ")
+    hex::encode(byte_data)
 }
 
 fn structure_response(
@@ -193,7 +189,7 @@ fn structure_response(
         format!("{}\r\n\r\n", status.text_value())
     } else if content_encoding != "" {
         format!(
-            "{}\r\nContent-Type: {content_type}\r\nContent-Encoding: {content_encoding}\r\nContent-Length: {}\r\n\r\n{}",
+            "{}\r\nContent-Encoding: {content_encoding}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n{}",
             status.text_value(),
             response.len(),
             response
