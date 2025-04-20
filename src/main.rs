@@ -161,12 +161,10 @@ fn accepts_encoding(header: &str) -> Option<Vec<String>> {
 }
 
 fn encode(content: &str) -> Vec<u8> {
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
 
     encoder.write_all(content.as_bytes()).unwrap();
-    let mut gzip_encoded = encoder.finish().unwrap();
-
-    //gzip_encoded[9] = 0x03;
+    let gzip_encoded = encoder.finish().unwrap();
 
     gzip_encoded
 }
@@ -200,6 +198,8 @@ fn structure_response(
             response.len(),
         )
     };
+
+    println!("Ouput to write \n\nHeader:\n{draft}Body:\n{:?}", response);
 
     let mut http_response = draft.into_bytes();
     http_response.extend_from_slice(response);
@@ -353,7 +353,6 @@ fn handle_connection(stream: TcpStream, directory: &str) -> std::io::Result<()> 
     println!("Request received:\n{http_request:#?}");
 
     let to_write = process_request(&http_request, directory);
-    println!("Ouput to write {:?}", to_write);
     write_response(stream, &to_write)?;
 
     Ok(())

@@ -10,4 +10,3 @@ anyhow = "1.0.68"                                # error handling
 bytes = "1.3.0"                                  # helps manage buffers
 thiserror = "1.0.38"                             # error handling
 flate2 = "1.1.1"                                 # gzip support
-hex = "0.4"                                      # binary to hex
