@@ -176,7 +176,11 @@ fn encode(content: &str) -> Vec<u8> {
 // }
 
 fn bytes_to_hexstr(byte_data: &[u8]) -> String {
-    hex::encode(byte_data)
+    byte_data
+        .iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn structure_response(
