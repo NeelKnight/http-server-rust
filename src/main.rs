@@ -166,7 +166,7 @@ fn encode(content: &str) -> Vec<u8> {
     encoder.write_all(content.as_bytes()).unwrap();
     let mut gzip_encoded = encoder.finish().unwrap();
 
-    gzip_encoded[9] = 0x03;
+    //gzip_encoded[9] = 0x03;
 
     gzip_encoded
 }
