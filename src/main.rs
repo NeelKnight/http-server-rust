@@ -162,7 +162,7 @@ fn accepts_encoding(header: &str) -> Option<Vec<String>> {
 }
 
 fn encode(content: &str) -> Vec<u8> {
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
 
     encoder.write_all(content.as_bytes()).unwrap();
     let mut gzip_encoded = encoder.finish().unwrap();
