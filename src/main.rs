@@ -175,36 +175,39 @@ fn encode(content: &str) -> Vec<u8> {
 //     general_purpose::STANDARD.encode(byte_data)
 // }
 
-fn bytes_to_hexstr(byte_data: &[u8]) -> String {
-    hex::encode(byte_data)
-}
+// fn bytes_to_hexstr(byte_data: &[u8]) -> String {
+//     hex::encode(byte_data)
+// }
 
 fn structure_response(
     status: StatusCode,
     content_type: &str,
     content_encoding: &str,
-    response: &str,
-) -> String {
-    if response == "" {
+    response: &[u8],
+) -> Vec<u8> {
+    let draft = if response.is_empty() {
         format!("{}\r\n\r\n", status.text_value())
     } else if content_encoding != "" {
         format!(
-            "{}\r\nContent-Encoding: {content_encoding}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n{}",
+            "{}\r\nContent-Encoding: {content_encoding}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
             status.text_value(),
             response.len(),
-            response
         )
     } else {
         format!(
-            "{}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n{}",
+            "{}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
             status.text_value(),
             response.len(),
-            response
         )
-    }
+    };
+
+    let mut http_response = draft.into_bytes();
+    http_response.extend_from_slice(response);
+
+    http_response
 }
 
-fn process_request(request: &HttpRequest, directory: &str) -> String {
+fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
     if request.header.contains("GET") || request.header.contains("POST") {
         let request_line: Vec<&str> = request.header.split_whitespace().collect();
 
@@ -218,7 +221,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                         StatusCode::Ok,
                         "text/plain",
                         "",
-                        "Welcome to Neel's HTTP Server Project, built with Rust!",
+                        b"Welcome to Neel's HTTP Server Project, built with Rust!",
                     )
                 }
                 Route::Echo(content) => {
@@ -226,7 +229,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                         Some(encodings) => {
                             for encoding in encodings {
                                 if encoding == "gzip" {
-                                    let encoded_text = bytes_to_hexstr(&encode(content));
+                                    let encoded_text = encode(content);
                                     return structure_response(
                                         StatusCode::Ok,
                                         "text/plain",
@@ -239,12 +242,17 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                                 StatusCode::Ok,
                                 "text/plain",
                                 "",
-                                "Invalid Encoding / Encoding Not supported by server!",
+                                b"Invalid Encoding / Encoding Not supported by server!",
                             );
                         }
                         None => (),
                     }
-                    return structure_response(StatusCode::Ok, "text/plain", "", content);
+                    return structure_response(
+                        StatusCode::Ok,
+                        "text/plain",
+                        "",
+                        &content.as_bytes(),
+                    );
                 }
                 Route::UserAgent => {
                     if let Some(line) = request
@@ -253,13 +261,18 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                         .find(|line| line.starts_with("User-Agent: "))
                     {
                         let line = &line["User-Agent: ".len()..];
-                        return structure_response(StatusCode::Ok, "text/plain", "", line);
+                        return structure_response(
+                            StatusCode::Ok,
+                            "text/plain",
+                            "",
+                            &line.as_bytes(),
+                        );
                     } else {
                         return structure_response(
                             StatusCode::BadRequest,
                             "text/plain",
                             "",
-                            "User Agent Not Found!",
+                            b"User Agent Not Found!",
                         );
                     }
                 }
@@ -272,7 +285,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                                 StatusCode::Ok,
                                 "application/octet-stream",
                                 "",
-                                &content,
+                                &content.as_bytes(),
                             )
                         }
                         Err(error) => {
@@ -281,7 +294,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                                 StatusCode::NotFound,
                                 "text/plain",
                                 "",
-                                &response,
+                                &response.as_bytes(),
                             );
                         }
                     }
@@ -292,19 +305,19 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                             StatusCode::BadRequest,
                             "text/plain",
                             "",
-                            "CreateFile API failure due to HTTP Body not present:!",
+                            b"CreateFile API failure due to HTTP Body not present:!",
                         );
                     }
                     let filename = sanitise_filename(filepath, directory);
                     match write_to_file(&filename, &request.body) {
-                        Ok(_) => return structure_response(StatusCode::Created, "", "", ""),
+                        Ok(_) => return structure_response(StatusCode::Created, "", "", b""),
                         Err(error) => {
                             let response = format!("File: {filename} creation failed: {error}!");
                             return structure_response(
                                 StatusCode::NotFound,
                                 "text/plain",
                                 "",
-                                &response,
+                                &response.as_bytes(),
                             );
                         }
                     }
@@ -314,7 +327,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                         StatusCode::NotFound,
                         "text/plain",
                         "",
-                        "Page NOT found!",
+                        b"Page NOT found!",
                     )
                 }
             }
@@ -324,12 +337,12 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
         StatusCode::NotFound,
         "text/plain",
         "",
-        "Malformed Request Line in HTTP_Request!",
+        b"Malformed Request Line in HTTP_Request!",
     )
 }
 
-fn write_response(mut stream: TcpStream, buffer: &str) -> std::io::Result<()> {
-    stream.write_all(buffer.as_bytes())?;
+fn write_response(mut stream: TcpStream, buffer: &[u8]) -> std::io::Result<()> {
+    stream.write_all(buffer)?;
     stream.flush()?;
 
     Ok(())
@@ -340,7 +353,7 @@ fn handle_connection(stream: TcpStream, directory: &str) -> std::io::Result<()> 
     println!("Request received:\n{http_request:#?}");
 
     let to_write = process_request(&http_request, directory);
-    println!("Ouput to write {}", to_write);
+    println!("Ouput to write {:?}", to_write);
     write_response(stream, &to_write)?;
 
     Ok(())
