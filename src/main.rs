@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose, Engine as _};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::io::prelude::*;
@@ -172,8 +171,12 @@ fn encode(content: &str) -> Vec<u8> {
     gzip_encoded
 }
 
-fn bytes_to_str(byte_data: &[u8]) -> String {
-    general_purpose::STANDARD.encode(byte_data)
+// fn bytes_to_str(byte_data: &[u8]) -> String {
+//     general_purpose::STANDARD.encode(byte_data)
+// }
+
+fn bytes_to_hexstr(byte_data: &[u8]) -> String {
+    hex::encode(byte_data)
 }
 
 fn structure_response(
@@ -223,7 +226,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> String {
                         Some(encodings) => {
                             for encoding in encodings {
                                 if encoding == "gzip" {
-                                    let encoded_text = bytes_to_str(&encode(content));
+                                    let encoded_text = bytes_to_hexstr(&encode(content));
                                     return structure_response(
                                         StatusCode::Ok,
                                         "text/plain",
