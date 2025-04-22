@@ -193,24 +193,41 @@ fn encode(content: &str) -> Vec<u8> {
 
 fn structure_response(
     status: StatusCode,
+    is_persistent: bool,
     content_type: &str,
     content_encoding: &str,
     response: &[u8],
 ) -> Vec<u8> {
     let draft = if response.is_empty() {
         format!("{}\r\n\r\n", status.text_value())
-    } else if content_encoding != "" {
-        format!(
+    } else if !content_encoding.is_empty() {
+        if is_persistent {
+            format!(
+            "{}\r\nContent-Encoding: {content_encoding}\r\nConnection: close\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
+            status.text_value(),
+            response.len(),
+            )
+        } else {
+            format!(
             "{}\r\nContent-Encoding: {content_encoding}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
             status.text_value(),
             response.len(),
-        )
+            )
+        }
     } else {
-        format!(
-            "{}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
-            status.text_value(),
-            response.len(),
-        )
+        if is_persistent {
+            format!(
+                "{}\r\nConnection: close\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
+                status.text_value(),
+                response.len(),
+            )
+        } else {
+            format!(
+                "{}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
+                status.text_value(),
+                response.len(),
+            )
+        }
     };
 
     println!("Ouput to write \n\nHeader:\n{draft}Body:\n{:?}", response);
@@ -233,6 +250,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                 Route::Index => {
                     return structure_response(
                         StatusCode::Ok,
+                        request.is_persistent,
                         "text/plain",
                         "",
                         b"Welcome to Neel's HTTP Server Project, built with Rust!",
@@ -246,6 +264,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                                     let encoded_text = encode(content);
                                     return structure_response(
                                         StatusCode::Ok,
+                                        request.is_persistent,
                                         "text/plain",
                                         "gzip",
                                         &encoded_text,
@@ -254,6 +273,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                             }
                             return structure_response(
                                 StatusCode::Ok,
+                                request.is_persistent,
                                 "text/plain",
                                 "",
                                 b"Invalid Encoding / Encoding Not supported by server!",
@@ -263,6 +283,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                     }
                     return structure_response(
                         StatusCode::Ok,
+                        request.is_persistent,
                         "text/plain",
                         "",
                         &content.as_bytes(),
@@ -277,6 +298,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                         let line = &line["User-Agent: ".len()..];
                         return structure_response(
                             StatusCode::Ok,
+                            request.is_persistent,
                             "text/plain",
                             "",
                             &line.as_bytes(),
@@ -284,6 +306,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                     } else {
                         return structure_response(
                             StatusCode::BadRequest,
+                            request.is_persistent,
                             "text/plain",
                             "",
                             b"User Agent Not Found!",
@@ -297,6 +320,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                         Ok(content) => {
                             return structure_response(
                                 StatusCode::Ok,
+                                request.is_persistent,
                                 "application/octet-stream",
                                 "",
                                 &content.as_bytes(),
@@ -306,6 +330,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                             let response = format!("File: {filename} NOT found: {error}!");
                             return structure_response(
                                 StatusCode::NotFound,
+                                request.is_persistent,
                                 "text/plain",
                                 "",
                                 &response.as_bytes(),
@@ -317,6 +342,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                     if request.body.is_empty() {
                         return structure_response(
                             StatusCode::BadRequest,
+                            request.is_persistent,
                             "text/plain",
                             "",
                             b"CreateFile API failure due to HTTP Body not present:!",
@@ -324,11 +350,20 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                     }
                     let filename = sanitise_filename(filepath, directory);
                     match write_to_file(&filename, &request.body) {
-                        Ok(_) => return structure_response(StatusCode::Created, "", "", b""),
+                        Ok(_) => {
+                            return structure_response(
+                                StatusCode::Created,
+                                request.is_persistent,
+                                "",
+                                "",
+                                b"",
+                            )
+                        }
                         Err(error) => {
                             let response = format!("File: {filename} creation failed: {error}!");
                             return structure_response(
                                 StatusCode::NotFound,
+                                request.is_persistent,
                                 "text/plain",
                                 "",
                                 &response.as_bytes(),
@@ -339,6 +374,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
                 Route::NotFound => {
                     return structure_response(
                         StatusCode::NotFound,
+                        request.is_persistent,
                         "text/plain",
                         "",
                         b"Page NOT found!",
@@ -349,6 +385,7 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
     }
     structure_response(
         StatusCode::NotFound,
+        request.is_persistent,
         "text/plain",
         "",
         b"Malformed Request Line in HTTP_Request!",
