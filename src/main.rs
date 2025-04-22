@@ -21,7 +21,6 @@ fn main() {
 
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
-    println!("Accepted new connection:");
     println!("Listening on http://127.0.0.1:4221...");
 
     for stream in listener.incoming() {
@@ -29,6 +28,7 @@ fn main() {
             Ok(stream) => {
                 let dir_ref = directory.clone();
                 thread::spawn(move || {
+                    println!("Accepted new connection:");
                     if let Err(error) = handle_connection(stream, &dir_ref) {
                         eprintln!("Error handling connection: {}", error);
                     }
@@ -45,6 +45,7 @@ fn main() {
 struct HttpRequest {
     header: String,
     body: String,
+    is_persistent: bool,
 }
 
 enum StatusCode {
@@ -122,7 +123,20 @@ fn read_request(stream: &TcpStream) -> HttpRequest {
         String::new()
     };
 
-    HttpRequest { header, body }
+    let mut is_persistent = true;
+    if header.is_empty()
+        || header
+            .lines()
+            .any(|line| line.to_lowercase() == "connection: close")
+    {
+        is_persistent = false;
+    }
+
+    HttpRequest {
+        header,
+        body,
+        is_persistent,
+    }
 }
 
 fn sanitise_filename(filename: &str, directory: &str) -> String {
@@ -341,19 +355,28 @@ fn process_request(request: &HttpRequest, directory: &str) -> Vec<u8> {
     )
 }
 
-fn write_response(mut stream: TcpStream, buffer: &[u8]) -> std::io::Result<()> {
+fn write_response(stream: &mut TcpStream, buffer: &[u8]) -> std::io::Result<()> {
     stream.write_all(buffer)?;
     stream.flush()?;
 
     Ok(())
 }
 
-fn handle_connection(stream: TcpStream, directory: &str) -> std::io::Result<()> {
-    let http_request = read_request(&stream);
-    println!("Request received:\n{http_request:#?}");
+fn handle_connection(mut stream: TcpStream, directory: &str) -> std::io::Result<()> {
+    loop {
+        let http_request = read_request(&stream);
+        println!("Request received:\n{http_request:#?}");
 
-    let to_write = process_request(&http_request, directory);
-    write_response(stream, &to_write)?;
+        let to_write = process_request(&http_request, directory);
+        write_response(&mut stream, &to_write)?;
+
+        if http_request.is_persistent {
+            println!("Re-using connection!");
+        } else {
+            println!("Closing connection!");
+            break;
+        }
+    }
 
     Ok(())
 }
