@@ -201,7 +201,7 @@ fn structure_response(
     let draft = if response.is_empty() {
         format!("{}\r\n\r\n", status.text_value())
     } else if !content_encoding.is_empty() {
-        if is_persistent {
+        if !is_persistent {
             format!(
             "{}\r\nContent-Encoding: {content_encoding}\r\nConnection: close\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
             status.text_value(),
@@ -215,7 +215,7 @@ fn structure_response(
             )
         }
     } else {
-        if is_persistent {
+        if !is_persistent {
             format!(
                 "{}\r\nConnection: close\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
                 status.text_value(),
