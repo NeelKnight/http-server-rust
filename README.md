@@ -1,4 +1,4 @@
-[![progress-banner](https://backend.codecrafters.io/progress/http-server/9d878f30-dee8-46be-b4ed-d04cbce343be)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+[![progress-banner](https://backend.codecrafters.io/progress/http-server/9d878f30-dee8-46be-b4ed-d04cbce343be)](https://app.codecrafters.io/users/NeelKnight)
 
 This is my first ever Rust Project!
 
